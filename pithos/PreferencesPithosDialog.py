@@ -24,6 +24,7 @@ import gobject
 
 from pithos.pithosconfig import getdatapath, valid_audio_formats
 from pithos.plugins.scrobble import LastFmAuth
+from pithos import theme
 
 configfilename = os.path.join(os.environ['appdata'], 'Pithos\\pithos.ini')
 
@@ -87,6 +88,7 @@ class PreferencesPithosDialog(gtk.Dialog):
             "mediakeys": False,
             "volume": 0.5,
             "audio_quality": valid_audio_formats[0][0],
+            "dark_theme": False,
         }
         
         try:
@@ -104,6 +106,7 @@ class PreferencesPithosDialog(gtk.Dialog):
                 elif val == 'True': val=True
                 self.__preferences[key]=val
         self.setup_fields()
+        self.set_dark_theme(self.__preferences["dark_theme"])
 
     def save(self):         
         existed = os.path.exists(configfilename)
@@ -136,7 +139,8 @@ class PreferencesPithosDialog(gtk.Dialog):
         self.builder.get_object('checkbutton_icon').set_active(self.__preferences["show_icon"])
         self.builder.get_object('checkbutton_growl').set_active(self.__preferences["growl"])
         self.builder.get_object('checkbutton_mediakeys').set_active(self.__preferences["mediakeys"])
-        
+        self.builder.get_object('checkbutton_dark_theme').set_active(self.__preferences["dark_theme"])
+
         self.lastfm_auth = LastFmAuth(self.__preferences, "lastfm_key", self.builder.get_object('lastfm_btn'))
         
     def ok(self, widget, data=None):
@@ -152,8 +156,12 @@ class PreferencesPithosDialog(gtk.Dialog):
         self.__preferences["proxy"] = self.builder.get_object('prefs_proxy').get_text()
         self.__preferences["audio_quality"] = valid_audio_formats[self.builder.get_object('prefs_audio_quality').get_active()][0]
         self.__preferences["show_icon"] = self.builder.get_object('checkbutton_icon').get_active()
-        
+        self.__preferences["dark_theme"] = self.builder.get_object('checkbutton_dark_theme').get_active()
+
         self.save()
+
+    def set_dark_theme(self, enabled):
+        theme.apply_dark_theme_to_builder(self.builder, enabled)
 
     def cancel(self, widget, data=None):
         """cancel - The user has elected cancel changes.

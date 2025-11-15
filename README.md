@@ -19,9 +19,20 @@ Notes
 
 You must remove pygtk if installed with an older version.
 
-If Python is installed to a custom directory(not C:\python27) it must be in the PATH environment variable to work (google to find out how) 
+If Python is installed to a custom directory(not C:\python27) it must be in the PATH environment variable to work (google to find out how)
 
 If previous versions crashed please try out the newest version as this has been resolved.
+
+Dark theme
+----------
+
+Pithos now ships with an optional dark GTK theme that can be toggled at runtime:
+
+1. Launch Pithos and choose **Edit → Preferences** (or press <kbd>Ctrl</kbd>+<kbd>P</kbd>).
+2. In the **General** tab, tick **Enable built-in dark theme**.
+3. Close the dialog — the darker palette is applied immediately and the preference is saved to your existing `pithos.ini` so it persists the next time you start the app.
+
+If you ever want to go back to the default look, simply return to the same checkbox and clear it.
 
 ------------------
 
