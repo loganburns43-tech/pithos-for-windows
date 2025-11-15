@@ -13,9 +13,10 @@ REM
 
 setlocal
 
-set PYTHON_EXE=pythonw.exe
+set "PYTHON_EXE=pythonw.exe"
+set "PITHOS_DIR=%~dp0"
 
-echo Detecting Pithos requirements (this may take a minute): 
+echo Detecting Pithos requirements (this may take a minute):
 
 REM Detect Python in the path
 for %%X in (%PYTHON_EXE%) do (set PYTHON_BIN=%%~$PATH:X)
@@ -24,14 +25,15 @@ if defined PYTHON_BIN goto python_found
 
 REM No python in path, see if its in a default location. Prefer
 REM Python 2.7, since our installer ships with that as default
-set PYTHON_BIN=C:\Python27\%PYTHON_EXE%
+set "PYTHON_BIN=C:\Python27\%PYTHON_EXE%"
 set PYTHON_VIA=hardcoded
-if exist python goto python_found
+if exist "%PYTHON_BIN%" goto python_found
+goto nopython
 
 :python_found
 echo     Python                     : %PYTHON_BIN% (via %PYTHON_VIA%)
-if %PYTHON_VIA%==environment set PYTHON_BIN=%PYTHON_EXE%
-if %PYTHON_VIA%==hardcoded echo "If this is incorrect add the correct one to the PATH environment variable (google is your friend)"
+if "%PYTHON_VIA%"=="environment" set "PYTHON_BIN=%PYTHON_EXE%"
+if "%PYTHON_VIA%"=="hardcoded" echo "If this is incorrect add the correct one to the PATH environment variable (google is your friend)"
 
 REM Detect GStreamer SDK
 set GST_VIA=environment
@@ -69,22 +71,25 @@ REM -> Note that we put the GST path first, so that any needed DLLs
 REM    are searched for there first, hopefully avoiding DLL hell
 REM 
 
-set PATH=%GST_SDK%\bin;%PATH%
-set PYGST_BINDINGS=%GST_SDK%\lib\python2.7\site-packages
-if defined PYTHONPATH set PYTHONPATH=%PYGST_BINDINGS%;%PYTHONPATH%
-if not defined PYTHONPATH set PYTHONPATH=%PYGST_BINDINGS%
+set "PATH=%GST_SDK%\bin;%PATH%"
+set "PYGST_BINDINGS=%GST_SDK%\lib\python2.7\site-packages"
+if defined PYTHONPATH (
+    set "PYTHONPATH=%PYGST_BINDINGS%;%PYTHONPATH%"
+) else (
+    set "PYTHONPATH=%PYGST_BINDINGS%"
+)
 
 :: Do this in case user has installed Python33 and selected for it to be added to PATH. Pithos does not work with Python33, it gives an exit code ^> 0.
 if exist "C:\Python27\%PYTHON_BIN%" set "PYTHON_BIN=C:\Python27\%PYTHON_BIN%"
 
-%PYTHON_BIN% -c "import pygst;pygst.require('0.10');import gst"
+"%PYTHON_BIN%" -c "import pygst;pygst.require('0.10');import gst"
 if not %ERRORLEVEL% == 0 goto badgst
 
 :pygst_found
 echo     GStreamer Python Bindings  : %PYGST_BINDINGS%
 
 REM Detect PyGTK. We do detection here since it may be in the GStreamer SDK
-%PYTHON_BIN% -c "import pygtk;pygtk.require('2.0');import gtk"
+"%PYTHON_BIN%" -c "import pygtk;pygtk.require('2.0');import gtk"
 if not %ERRORLEVEL% == 0 goto badgtk
 
 echo     PyGTK                      : OK
@@ -137,8 +142,8 @@ pause && goto end
 
 
 :start_pithos
-pushd %~dp0
-start %PYTHON_BIN% pithos.pyw
+pushd "%PITHOS_DIR%"
+start "" "%PYTHON_BIN%" "%PITHOS_DIR%pithos.pyw"
 popd
 goto end
 
