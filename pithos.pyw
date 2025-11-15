@@ -46,7 +46,7 @@ else:
 	fullPath = os.getcwd()
 sys.path.insert(0, os.path.dirname(fullPath))
 
-from pithos import AboutPithosDialog, PreferencesPithosDialog, StationsDialog
+from pithos import AboutPithosDialog, PreferencesPithosDialog, StationsDialog, theme
 from pithos.pithosconfig import get_data_file, getdatapath, VERSION
 from pithos.gobject_worker import GObjectWorker
 from pithos.plugin import load_plugins
@@ -161,20 +161,21 @@ class PithosWindow(gtk.Window):
 			else:
 				launchpad_available = False
 				
-		self.prefs_dlg = PreferencesPithosDialog.NewPreferencesPithosDialog()
-		self.preferences = self.prefs_dlg.get_preferences()
+                self.prefs_dlg = PreferencesPithosDialog.NewPreferencesPithosDialog()
+                self.preferences = self.prefs_dlg.get_preferences()
+                self.update_dark_theme()
 		
 		self.init_core()
-		self.init_ui()
+                self.init_ui()
 		
 		self.plugins = {}
-		load_plugins(self)
+                load_plugins(self)
 		
-		if not self.preferences['username']:
-			self.show_preferences(is_startup=True)
-		
-		self.set_proxy()
-		self.set_audio_quality()
+                if not self.preferences['username']:
+                        self.show_preferences(is_startup=True)
+
+                self.set_proxy()
+                self.set_audio_quality()
 		self.pandora_connect()
 		 
 	def init_core(self):
@@ -217,10 +218,10 @@ class PithosWindow(gtk.Window):
 		aa = gtk.gdk.pixbuf_new_from_file(os.path.join(getdatapath(), 'media', 'album_default.png'))
 		self.default_album_art = aa.scale_simple(ALBUM_ART_SIZE, ALBUM_ART_SIZE, gtk.gdk.INTERP_BILINEAR)
 		
-	def init_ui(self):
-		gobject.set_application_name("Pithos")
-		gtk.window_set_default_icon_name('pithos')
-		os.environ['PULSE_PROP_media.role'] = 'music'
+        def init_ui(self):
+                gobject.set_application_name("Pithos")
+                gtk.window_set_default_icon_name('pithos')
+                os.environ['PULSE_PROP_media.role'] = 'music'
 		
 		self.playpause_button = self.builder.get_object('playpause_button')
 		
@@ -267,10 +268,23 @@ class PithosWindow(gtk.Window):
 		self.stations_combo.set_model(self.stations_model)
 		render_text = gtk.CellRendererText()
 		self.stations_combo.pack_start(render_text, expand=True)
-		self.stations_combo.add_attribute(render_text, "text", 1)
-		self.stations_combo.set_row_separator_func(lambda model, iter: model.get_value(iter, 0) is None)
-		
-		buttonMenu(self.builder.get_object("toolbutton_options"), self.builder.get_object("menu_options"))
+                self.stations_combo.add_attribute(render_text, "text", 1)
+                self.stations_combo.set_row_separator_func(lambda model, iter: model.get_value(iter, 0) is None)
+
+                buttonMenu(self.builder.get_object("toolbutton_options"), self.builder.get_object("menu_options"))
+
+        def update_dark_theme(self):
+                enabled = bool(self.preferences.get('dark_theme'))
+                theme.apply_dark_theme_to_builder(self.builder, enabled)
+                if getattr(self, 'prefs_dlg', None):
+                        self.prefs_dlg.set_dark_theme(enabled)
+                stations_dialog = getattr(self, 'stations_dlg', None)
+                if stations_dialog:
+                        theme.apply_dark_theme_to_widget(stations_dialog, enabled)
+                for plugin in getattr(self, 'plugins', {}).values():
+                        menu = getattr(plugin, 'menu', None)
+                        if isinstance(menu, gtk.Widget):
+                                theme.apply_dark_theme_to_widget(menu, enabled)
 	
 	def worker_run(self, fn, args=(), callback=None, message=None, context='net'):
 		if context and message:
@@ -747,38 +761,42 @@ class PithosWindow(gtk.Window):
 		# openBrowser("https://bugs.launchpad.net/pithos")
 		openBrowser("https://github.com/TingPing/pithos-for-windows/issues")
 
-	def about(self, widget, data=None):
-		"""about - display the about box for pithos """
-		about = AboutPithosDialog.NewAboutPithosDialog()
-		about.set_version(VERSION)
-		response = about.run()
-		about.destroy()
+        def about(self, widget, data=None):
+                """about - display the about box for pithos """
+                about = AboutPithosDialog.NewAboutPithosDialog()
+                theme.apply_dark_theme_to_widget(about, self.preferences.get('dark_theme'))
+                about.set_version(VERSION)
+                response = about.run()
+                about.destroy()
 
-	def show_preferences(self, widget=None, data=None, is_startup=False):
-		"""preferences - display the preferences window for pithos """
-		old_prefs = dict(self.preferences)
-		response = self.prefs_dlg.run()
-		self.prefs_dlg.hide()
-		
-		if response == gtk.RESPONSE_OK:
-			self.preferences = self.prefs_dlg.get_preferences()
-			if not is_startup:
-				if self.preferences['proxy'] != old_prefs['proxy']:
-					self.set_proxy()
-				if self.preferences['audio_quality'] != old_prefs['audio_quality']:
-					self.set_audio_quality()
+        def show_preferences(self, widget=None, data=None, is_startup=False):
+                """preferences - display the preferences window for pithos """
+                old_prefs = dict(self.preferences)
+                response = self.prefs_dlg.run()
+                self.prefs_dlg.hide()
+
+                if response == gtk.RESPONSE_OK:
+                        self.preferences = self.prefs_dlg.get_preferences()
+                        if self.preferences['dark_theme'] != old_prefs['dark_theme']:
+                                self.update_dark_theme()
+                        if not is_startup:
+                                if self.preferences['proxy'] != old_prefs['proxy']:
+                                        self.set_proxy()
+                                if self.preferences['audio_quality'] != old_prefs['audio_quality']:
+                                        self.set_audio_quality()
 				if (   self.preferences['username'] != old_prefs['username']
 					or self.preferences['password'] != old_prefs['password']
 					or self.preferences['pandora_one'] != old_prefs['pandora_one']):
 						self.pandora_connect()
 			load_plugins(self)
 					
-	def stations_dialog(self, *ignore):
-		if self.stations_dlg:
-			self.stations_dlg.present()
-		else:
-			self.stations_dlg = StationsDialog.NewStationsDialog(self)
-			self.stations_dlg.show_all()
+        def stations_dialog(self, *ignore):
+                if self.stations_dlg:
+                        self.stations_dlg.present()
+                else:
+                        self.stations_dlg = StationsDialog.NewStationsDialog(self)
+                        theme.apply_dark_theme_to_widget(self.stations_dlg, self.preferences.get('dark_theme'))
+                        self.stations_dlg.show_all()
 			
 	def refresh_stations(self, *ignore):
 		self.worker_run(self.pandora.get_stations, (), self.process_stations, "Refreshing stations...")

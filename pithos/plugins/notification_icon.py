@@ -17,6 +17,7 @@
 import gtk
 from pithos.pithosconfig import get_data_file
 from pithos.plugin import PithosPlugin
+from pithos import theme
 
 # Check if appindicator is available on the system
 try:
@@ -48,7 +49,7 @@ class PithosNotificationIcon(PithosPlugin):
             self.statusicon.connect('activate', self.toggle_visible)
         
         self.build_context_menu()
-       
+
     def build_context_menu(self):
         menu = gtk.Menu()
         
@@ -82,8 +83,9 @@ class PithosNotificationIcon(PithosPlugin):
             self.ind.set_menu(menu)
         else:
             self.statusicon.connect('popup-menu', self.context_menu, menu)
-            
+
         self.menu = menu
+        theme.apply_dark_theme_to_widget(menu, self.window.preferences.get('dark_theme'))
 
 
     def play_state_changed(self, window, playing):
