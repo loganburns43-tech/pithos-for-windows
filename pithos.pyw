@@ -823,27 +823,41 @@ if __name__ == "__main__":
 	parser.add_option("-v", "--verbose", action="store_true", dest="verbose", help="Show debug messages")
 	parser.add_option("-t", "--test", action="store_true", dest="test", help="Use a mock web interface instead of connecting to the real Pandora server")
 	(options, args) = parser.parse_args()
-	 
+
 
 	def try_to_raise():
 		# will get working on windows soon
 		return False
 
 	if not options.test and try_to_raise():
-			print "Raised existing Pithos instance"
+		print "Raised existing Pithos instance"
 	else:
-		
-		#set the logging level to show debug messages
-		logfile = os.path.join(os.environ['appdata'], 'Pithos\\pithos.log')
+
+		def get_logfile():
+			logfile = None
+			appdata = os.environ.get('appdata') or os.environ.get('APPDATA')
+			basedir = appdata or os.path.expanduser('~')
+			if basedir:
+				logfile = os.path.join(basedir, 'Pithos\pithos.log')
+				logdir = os.path.dirname(logfile)
+				if not os.path.exists(logdir):
+					try:
+						os.makedirs(logdir)
+					except OSError:
+						logfile = None
+			return logfile
+
+		logfile = get_logfile()
+		log_kwargs = {'level': logging.INFO if options.verbose else logging.WARNING}
 		if options.verbose:
-			logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s', filename=logfile)
-		else:
-			logging.basicConfig(level=logging.WARNING)
-			
+			log_kwargs['format'] = '%(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s'
+		if logfile:
+			log_kwargs['filename'] = logfile
+		logging.basicConfig(**log_kwargs)
+
 		logging.info("Pithos %s"%VERSION)
-			
+
 		window = NewPithosWindow(options)
 		window.show()
 		window.set_icon_from_file('./data/icons/pithos-small.ico')
 		gtk.main()
-
