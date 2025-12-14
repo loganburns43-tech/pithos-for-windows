@@ -73,6 +73,7 @@ def buttonMenu(button, menu):
 
 ALBUM_ART_SIZE = 96
 ALBUM_ART_X_PAD = 6
+MIN_REMAINING_SONGS = 4
 
 class CellRendererAlbumArt(gtk.GenericCellRenderer):  
 	def __init__(self):
@@ -272,38 +273,41 @@ class PithosWindow(gtk.Window):
 		
 		buttonMenu(self.builder.get_object("toolbutton_options"), self.builder.get_object("menu_options"))
 	
-	def worker_run(self, fn, args=(), callback=None, message=None, context='net'):
-		if context and message:
-			self.statusbar.push(self.statusbar.get_context_id(context), message)
+        def worker_run(self, fn, args=(), callback=None, message=None, context='net', errorback=None):
+                if context and message:
+                        self.statusbar.push(self.statusbar.get_context_id(context), message)
 		
 		if isinstance(fn,str):
 			fn = getattr(self.pandora, fn)
 			
-		def cb(v):
-			if context: self.statusbar.pop(self.statusbar.get_context_id(context))
-			if callback: callback(v)
-			
-		def eb(e):
-			if context and message:
-				self.statusbar.pop(self.statusbar.get_context_id(context))
-				
-			def retry_cb():
-				self.auto_retrying_auth = False
-				if fn is not self.pandora.connect:
-					self.worker_run(fn, args, callback, message, context)
-				
-			if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
-				self.auto_retrying_auth = True
-				logging.info("Automatic reconnect after invalid auth token")                
-				self.pandora_connect("Reconnecting...", retry_cb)
-			elif isinstance(e, PandoraAPIVersionError):
-				self.api_update_dialog()
-			elif isinstance(e, PandoraError):
-				self.error_dialog(e.message, retry_cb, submsg=e.submsg)
-			else:
-				logging.warn(e.traceback)
-				
-		self.worker.send(fn, args, cb, eb)
+                def cb(v):
+                        if context: self.statusbar.pop(self.statusbar.get_context_id(context))
+                        if callback: callback(v)
+
+                def eb(e):
+                        if context and message:
+                                self.statusbar.pop(self.statusbar.get_context_id(context))
+
+                        def retry_cb():
+                                self.auto_retrying_auth = False
+                                if fn is not self.pandora.connect:
+                                        self.worker_run(fn, args, callback, message, context, errorback)
+
+                        if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
+                                self.auto_retrying_auth = True
+                                logging.info("Automatic reconnect after invalid auth token")
+                                self.pandora_connect("Reconnecting...", retry_cb)
+                        elif isinstance(e, PandoraAPIVersionError):
+                                self.api_update_dialog()
+                        elif isinstance(e, PandoraError):
+                                self.error_dialog(e.message, retry_cb, submsg=e.submsg)
+                        else:
+                                logging.warn(e.traceback)
+
+                        if errorback:
+                                errorback(e)
+
+                self.worker.send(fn, args, cb, eb)
 	
 	def set_proxy(self):
 		self.worker_run('set_proxy', (self.preferences['proxy'],))
@@ -349,17 +353,17 @@ class PithosWindow(gtk.Window):
 		if self.current_song_index is not None:
 			return self.songs_model[self.current_song_index][0]
 	
-	def start_song(self, song_index):
-		songs_remaining = len(self.songs_model) - song_index
-		
-		if songs_remaining <= 0:
-			# We don't have this song yet. Get a new playlist.
-			return self.get_playlist(start = True)
-		elif songs_remaining == 1:
-			# Preload next playlist so there's no delay
-			self.get_playlist()
-				
-		prev = self.current_song
+        def start_song(self, song_index):
+                songs_remaining = len(self.songs_model) - song_index
+
+                logging.info("Request to start song index %i: queue length=%i remaining_from_index=%i waiting_for_playlist=%s",
+                             song_index, len(self.songs_model), songs_remaining, self.waiting_for_playlist)
+
+                if songs_remaining <= 0:
+                        # We don't have this song yet. Get a new playlist.
+                        return self.ensure_min_queue("start_song_missing", start=True)
+
+                prev = self.current_song
 		
 		self.stop()
 		self.current_song_index = song_index
@@ -375,24 +379,25 @@ class PithosWindow(gtk.Window):
 		if self.current_song.tired or self.current_song.rating == RATE_BAN:
 			return self.next_song()
 		
-		logging.info("Starting song: index = %i"%(song_index))
-		self.buffer_percent = 100
-		self.player.set_property("uri", self.current_song.audioUrl)
-		self.play()
-		self.player.set_property("volume", self.preferences['volume']) # work around for volume reseting every song
+                logging.info("Starting song: index = %i"%(song_index))
+                self.buffer_percent = 100
+                self.player.set_property("uri", self.current_song.audioUrl)
+                self.play()
+                self.player.set_property("volume", self.preferences['volume']) # work around for volume reseting every song
 
 		self.playcount += 1
 					
-		self.current_song.start_time = time.time()
+                self.current_song.start_time = time.time()
 		
 		self.songs_treeview.scroll_to_cell(song_index, use_align=True, row_align = 1.0)
 		self.songs_treeview.set_cursor(song_index, None, 0)
 		self.set_title("Pithos - %s by %s" % (self.current_song.title, self.current_song.artist))
 					
-		self.emit('song-changed', self.current_song)
+                self.emit('song-changed', self.current_song)
+                self.ensure_min_queue("start_song")
 			
-	def next_song(self, *ignore):
-		self.start_song(self.current_song_index + 1)
+        def next_song(self, *ignore):
+                self.start_song(self.current_song_index + 1)
 		
 	def user_play(self, *ignore):
 		self.play()
@@ -446,9 +451,9 @@ class PithosWindow(gtk.Window):
 		else:
 			self.user_play()
 			
-	def get_playlist(self, start = False):
-		self.start_new_playlist = self.start_new_playlist or start
-		if self.waiting_for_playlist: return
+        def get_playlist(self, start = False):
+                self.start_new_playlist = self.start_new_playlist or start
+                if self.waiting_for_playlist: return
 		
 		if self.gstreamer_errorcount_1 >= self.playcount and self.gstreamer_errorcount_2 >=1:
 			logging.warn("Too many gstreamer errors. Not retrying")
@@ -464,30 +469,53 @@ class PithosWindow(gtk.Window):
 				self.songs_model[index][3]=pixbuf
 				self.update_song_row(song)
 			
-		def callback(l):
-			start_index = len(self.songs_model)
-			for i in l:
-				i.index = len(self.songs_model)
-				self.songs_model.append((i, '', '', self.default_album_art))
-				self.update_song_row(i)
+                def callback(l):
+                        start_index = len(self.songs_model)
+                        for i in l:
+                                i.index = len(self.songs_model)
+                                self.songs_model.append((i, '', '', self.default_album_art))
+                                self.update_song_row(i)
 				
 				i.art_pixbuf = None
 				if i.artRadio: 
 					proxy = self.preferences['proxy']
 					self.art_worker.send(get_album_art, (i.artRadio, proxy, i, i.index), art_callback)
 
-			self.statusbar.pop(self.statusbar.get_context_id('net'))
-			if self.start_new_playlist:
-				self.start_song(start_index)
-				
-			self.gstreamer_errorcount_2 = self.gstreamer_errorcount_1
-			self.gstreamer_errorcount_1 = 0
-			self.playcount = 0
-			self.waiting_for_playlist = False
-			self.start_new_playlist = False
-			
-		self.waiting_for_playlist = True
-		self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...")
+                        logging.info("Playlist fetch complete: received=%i queue_length=%i start_new_playlist=%s",
+                                     len(l), len(self.songs_model), self.start_new_playlist)
+                        self.statusbar.pop(self.statusbar.get_context_id('net'))
+                        if self.start_new_playlist:
+                                self.start_song(start_index)
+
+                        self.gstreamer_errorcount_2 = self.gstreamer_errorcount_1
+                        self.gstreamer_errorcount_1 = 0
+                        self.playcount = 0
+                        self.waiting_for_playlist = False
+                        self.start_new_playlist = False
+
+                def errorback(e):
+                        logging.warn("Playlist fetch failed: %s (waiting flag reset)", getattr(e, 'message', e))
+                        self.waiting_for_playlist = False
+                        self.ensure_min_queue("playlist_error_retry", start=start)
+
+                logging.info("Fetching playlist: start=%s queue_length=%i remaining=%i waiting=%s", start,
+                             len(self.songs_model), self.remaining_songs(), self.waiting_for_playlist)
+                self.waiting_for_playlist = True
+                self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...", errorback=errorback)
+
+        def remaining_songs(self):
+                if self.current_song_index is None:
+                        return len(self.songs_model)
+                return len(self.songs_model) - self.current_song_index - 1
+
+        def ensure_min_queue(self, reason, start=False):
+                remaining = self.remaining_songs()
+                logging.info("Queue check (%s): remaining=%i min_remaining=%i waiting=%s start_flag=%s", reason,
+                             remaining, MIN_REMAINING_SONGS, self.waiting_for_playlist, start or self.start_new_playlist)
+                if self.waiting_for_playlist:
+                        return
+                if remaining < MIN_REMAINING_SONGS:
+                        self.get_playlist(start=start)
 		  
 	def error_dialog(self, message, retry_cb, submsg=None):
 		dialog = self.builder.get_object("error_dialog")
@@ -818,32 +846,75 @@ def NewPithosWindow(options):
 
 
 if __name__ == "__main__":
-	import logging, optparse
-	parser = optparse.OptionParser(version="Pithos %s"%(VERSION))
-	parser.add_option("-v", "--verbose", action="store_true", dest="verbose", help="Show debug messages")
-	parser.add_option("-t", "--test", action="store_true", dest="test", help="Use a mock web interface instead of connecting to the real Pandora server")
-	(options, args) = parser.parse_args()
-	 
+        import logging, optparse, traceback
+        parser = optparse.OptionParser(version="Pithos %s"%(VERSION))
+        parser.add_option("-v", "--verbose", action="store_true", dest="verbose", help="Show debug messages")
+        parser.add_option("-t", "--test", action="store_true", dest="test", help="Use a mock web interface instead of connecting to the real Pandora server")
+        (options, args) = parser.parse_args()
+
 
 	def try_to_raise():
 		# will get working on windows soon
 		return False
 
-	if not options.test and try_to_raise():
-			print "Raised existing Pithos instance"
-	else:
-		
-		#set the logging level to show debug messages
-		logfile = os.path.join(os.environ['appdata'], 'Pithos\\pithos.log')
-		if options.verbose:
-			logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s', filename=logfile)
-		else:
-			logging.basicConfig(level=logging.WARNING)
-			
-		logging.info("Pithos %s"%VERSION)
-			
-		window = NewPithosWindow(options)
-		window.show()
-		window.set_icon_from_file('./data/icons/pithos-small.ico')
-		gtk.main()
+        def fatal_dialog(msg, submsg=None):
+                try:
+                        dialog = gtk.MessageDialog(type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK)
+                        dialog.props.text = msg
+                        dialog.props.secondary_text = submsg
+                        dialog.run()
+                        dialog.hide()
+                except Exception:
+                        sys.stderr.write("Pithos error: %s\n" % msg)
+                        if submsg:
+                                sys.stderr.write("%s\n" % submsg)
+
+        def setup_logging():
+                log_kwargs = {}
+                loglevel = logging.INFO if options.verbose else logging.WARNING
+                appdata_dir = os.environ.get('APPDATA') or os.environ.get('appdata')
+                if not appdata_dir:
+                        appdata_dir = os.path.expanduser('~') or None
+                logfile = os.path.join(appdata_dir, 'Pithos\\pithos.log') if appdata_dir else None
+                logdir = os.path.dirname(logfile) if logfile else None
+                if logfile and logdir and not os.path.exists(logdir):
+                        try:
+                                os.makedirs(logdir)
+                        except OSError:
+                                logfile = None
+                                logdir = None
+                if logfile:
+                        log_kwargs['filename'] = logfile
+                try:
+                        logging.basicConfig(level=loglevel,
+                                            format='%(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s',
+                                            **log_kwargs)
+                except Exception:
+                        logging.basicConfig(level=loglevel)
+                        logging.warning("Falling back to console logging")
+                return logfile
+
+        def log_excepthook(exc_type, exc_value, exc_traceback):
+                logging.error("Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback))
+                tb_text = ''.join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+                fatal_dialog("Pithos failed to start", tb_text)
+
+        if not options.test and try_to_raise():
+                print "Raised existing Pithos instance"
+        else:
+                logfile = setup_logging()
+                sys.excepthook = log_excepthook
+                logging.info("Pithos %s"%VERSION)
+
+                try:
+                        window = NewPithosWindow(options)
+                        window.show()
+                        try:
+                                window.set_icon_from_file('./data/icons/pithos-small.ico')
+                        except Exception:
+                                logging.warning("Unable to load application icon")
+                        gtk.main()
+                except Exception:
+                        logging.exception("Startup failure")
+                        fatal_dialog("Pithos failed to start", "See log file: %s" % (logfile or "stderr"))
 
