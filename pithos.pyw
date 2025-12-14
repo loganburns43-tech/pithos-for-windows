@@ -283,14 +283,21 @@ class PithosWindow(gtk.Window):
 			if context: self.statusbar.pop(self.statusbar.get_context_id(context))
 			if callback: callback(v)
 			
-		def eb(e):
-			if context and message:
-				self.statusbar.pop(self.statusbar.get_context_id(context))
-				
-			def retry_cb():
-				self.auto_retrying_auth = False
-				if fn is not self.pandora.connect:
-					self.worker_run(fn, args, callback, message, context)
+                def eb(e):
+                        if context and message:
+                                self.statusbar.pop(self.statusbar.get_context_id(context))
+
+                        # If we were waiting for a playlist when the request failed
+                        # (network hiccup, expired auth, etc), clear the flag so a
+                        # future retry can run. Otherwise the stalled flag prevents
+                        # additional playlist requests.
+                        if self.waiting_for_playlist:
+                                self.waiting_for_playlist = False
+
+                        def retry_cb():
+                                self.auto_retrying_auth = False
+                                if fn is not self.pandora.connect:
+                                        self.worker_run(fn, args, callback, message, context)
 				
 			if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
 				self.auto_retrying_auth = True
