@@ -286,15 +286,22 @@ class PithosWindow(gtk.Window):
 		def eb(e):
 			if context and message:
 				self.statusbar.pop(self.statusbar.get_context_id(context))
-				
+			
+			# If we were waiting for a playlist when the request failed
+			# (network hiccup, expired auth, etc), clear the flag so a
+			# future retry can run. Otherwise the stalled flag prevents
+			# additional playlist requests.
+			if self.waiting_for_playlist:
+				self.waiting_for_playlist = False
+			
 			def retry_cb():
 				self.auto_retrying_auth = False
 				if fn is not self.pandora.connect:
 					self.worker_run(fn, args, callback, message, context)
-				
+			
 			if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
 				self.auto_retrying_auth = True
-				logging.info("Automatic reconnect after invalid auth token")                
+				logging.info("Automatic reconnect after invalid auth token")
 				self.pandora_connect("Reconnecting...", retry_cb)
 			elif isinstance(e, PandoraAPIVersionError):
 				self.api_update_dialog()
@@ -304,7 +311,6 @@ class PithosWindow(gtk.Window):
 				logging.warn(e.traceback)
 				
 		self.worker.send(fn, args, cb, eb)
-	
 	def set_proxy(self):
 		self.worker_run('set_proxy', (self.preferences['proxy'],))
 
@@ -450,11 +456,13 @@ class PithosWindow(gtk.Window):
 		self.start_new_playlist = self.start_new_playlist or start
 		if self.waiting_for_playlist: return
 		
-		if self.gstreamer_errorcount_1 >= self.playcount and self.gstreamer_errorcount_2 >=1:
-			logging.warn("Too many gstreamer errors. Not retrying")
-			self.waiting_for_playlist = 1
-			self.error_dialog(self.gstreamer_error, self.get_playlist)
-			return
+                if self.gstreamer_errorcount_1 >= self.playcount and self.gstreamer_errorcount_2 >=1:
+                        logging.warn("Too many gstreamer errors. Not retrying")
+                        # Don't block future playlist attempts if the user chooses to retry
+                        # after seeing the error dialog.
+                        self.waiting_for_playlist = False
+                        self.error_dialog(self.gstreamer_error, self.get_playlist)
+                        return
 		
 		def art_callback(t):
 			pixbuf, song, index = t
