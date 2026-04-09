@@ -71,6 +71,38 @@ def buttonMenu(button, menu):
 	
 	button.connect('clicked', cb)
 
+def enable_dark_theme():
+	"""Apply a simple dark GTK2 theme for the app window."""
+	gtk.rc_parse_string("""
+	style "pithos-dark-default" {
+		bg[NORMAL]      = "#2b2b2b"
+		bg[PRELIGHT]    = "#333333"
+		bg[ACTIVE]      = "#232323"
+		bg[SELECTED]    = "#2f5f99"
+		bg[INSENSITIVE] = "#2b2b2b"
+
+		fg[NORMAL]      = "#e6e6e6"
+		fg[PRELIGHT]    = "#ffffff"
+		fg[ACTIVE]      = "#ffffff"
+		fg[SELECTED]    = "#ffffff"
+		fg[INSENSITIVE] = "#8f8f8f"
+
+		text[NORMAL]      = "#e6e6e6"
+		text[PRELIGHT]    = "#ffffff"
+		text[ACTIVE]      = "#ffffff"
+		text[SELECTED]    = "#ffffff"
+		text[INSENSITIVE] = "#8f8f8f"
+
+		base[NORMAL]      = "#1f252b"
+		base[PRELIGHT]    = "#25303a"
+		base[ACTIVE]      = "#1f252b"
+		base[SELECTED]    = "#2f5f99"
+		base[INSENSITIVE] = "#1f252b"
+	}
+
+	widget "*" style "pithos-dark-default"
+	""")
+
 ALBUM_ART_SIZE = 96
 ALBUM_ART_X_PAD = 6
 
@@ -846,6 +878,7 @@ if __name__ == "__main__":
 			logging.basicConfig(level=logging.WARNING)
 			
 		logging.info("Pithos %s"%VERSION)
+		enable_dark_theme()
 			
 		window = NewPithosWindow(options)
 		window.show()
