@@ -71,6 +71,89 @@ def buttonMenu(button, menu):
 	
 	button.connect('clicked', cb)
 
+def enable_dark_theme():
+	"""Apply a simple dark GTK2 theme for the app window."""
+	gtk.rc_parse_string("""
+	style "pithos-dark-default" {
+		bg[NORMAL]      = "#2b2b2b"
+		bg[PRELIGHT]    = "#333333"
+		bg[ACTIVE]      = "#232323"
+		bg[SELECTED]    = "#2f5f99"
+		bg[INSENSITIVE] = "#2b2b2b"
+
+		fg[NORMAL]      = "#e6e6e6"
+		fg[PRELIGHT]    = "#ffffff"
+		fg[ACTIVE]      = "#ffffff"
+		fg[SELECTED]    = "#ffffff"
+		fg[INSENSITIVE] = "#8f8f8f"
+
+		text[NORMAL]      = "#e6e6e6"
+		text[PRELIGHT]    = "#ffffff"
+		text[ACTIVE]      = "#ffffff"
+		text[SELECTED]    = "#ffffff"
+		text[INSENSITIVE] = "#8f8f8f"
+
+		base[NORMAL]      = "#1f252b"
+		base[PRELIGHT]    = "#25303a"
+		base[ACTIVE]      = "#1f252b"
+		base[SELECTED]    = "#2f5f99"
+		base[INSENSITIVE] = "#1f252b"
+	}
+
+	style "pithos-dark-topbar" {
+		bg[NORMAL]      = "#1f1f1f"
+		bg[PRELIGHT]    = "#2a2a2a"
+		bg[ACTIVE]      = "#161616"
+		bg[SELECTED]    = "#303030"
+		fg[NORMAL]      = "#f0f0f0"
+		fg[PRELIGHT]    = "#ffffff"
+		fg[ACTIVE]      = "#ffffff"
+		fg[SELECTED]    = "#ffffff"
+	}
+
+	style "pithos-dark-list" {
+		bg[NORMAL]      = "#1f252b"
+		bg[PRELIGHT]    = "#26313c"
+		bg[ACTIVE]      = "#1f252b"
+		bg[SELECTED]    = "#2f5f99"
+		base[NORMAL]    = "#1b2229"
+		base[PRELIGHT]  = "#202a33"
+		base[ACTIVE]    = "#1b2229"
+		base[SELECTED]  = "#2f5f99"
+		text[NORMAL]    = "#e6e6e6"
+		text[SELECTED]  = "#ffffff"
+	}
+
+	style "pithos-dark-scrollbar" {
+		bg[NORMAL]      = "#22272d"
+		bg[PRELIGHT]    = "#2c333b"
+		bg[ACTIVE]      = "#1d2227"
+		base[NORMAL]    = "#171b20"
+		xthickness      = 1
+		ythickness      = 1
+	}
+
+	style "pithos-dark-button" {
+		bg[NORMAL]      = "#2d3238"
+		bg[PRELIGHT]    = "#38414a"
+		bg[ACTIVE]      = "#23282e"
+		bg[SELECTED]    = "#2f5f99"
+		fg[NORMAL]      = "#efefef"
+		fg[PRELIGHT]    = "#ffffff"
+		fg[ACTIVE]      = "#ffffff"
+	}
+
+	widget "*" style "pithos-dark-default"
+	widget_class "*GtkToolbar*" style "pithos-dark-topbar"
+	widget_class "*GtkToolButton*" style "pithos-dark-button"
+	widget_class "*GtkButton*" style "pithos-dark-button"
+	widget_class "*GtkComboBox*" style "pithos-dark-topbar"
+	widget_class "*GtkTreeView*" style "pithos-dark-list"
+	widget_class "*GtkScrolledWindow*" style "pithos-dark-list"
+	widget_class "*GtkVScrollbar*" style "pithos-dark-scrollbar"
+	widget_class "*GtkHScrollbar*" style "pithos-dark-scrollbar"
+	""")
+
 ALBUM_ART_SIZE = 96
 ALBUM_ART_X_PAD = 6
 
@@ -272,7 +355,7 @@ class PithosWindow(gtk.Window):
 		
 		buttonMenu(self.builder.get_object("toolbutton_options"), self.builder.get_object("menu_options"))
 	
-	def worker_run(self, fn, args=(), callback=None, message=None, context='net'):
+	def worker_run(self, fn, args=(), callback=None, message=None, context='net', errorback=None):
 		if context and message:
 			self.statusbar.push(self.statusbar.get_context_id(context), message)
 		
@@ -286,11 +369,13 @@ class PithosWindow(gtk.Window):
 		def eb(e):
 			if context and message:
 				self.statusbar.pop(self.statusbar.get_context_id(context))
+			if errorback:
+				errorback(e)
 				
 			def retry_cb():
 				self.auto_retrying_auth = False
 				if fn is not self.pandora.connect:
-					self.worker_run(fn, args, callback, message, context)
+					self.worker_run(fn, args, callback, message, context, errorback)
 				
 			if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
 				self.auto_retrying_auth = True
@@ -476,18 +561,21 @@ class PithosWindow(gtk.Window):
 					proxy = self.preferences['proxy']
 					self.art_worker.send(get_album_art, (i.artRadio, proxy, i, i.index), art_callback)
 
-			self.statusbar.pop(self.statusbar.get_context_id('net'))
-			if self.start_new_playlist:
-				self.start_song(start_index)
-				
+			should_start_new_playlist = self.start_new_playlist
 			self.gstreamer_errorcount_2 = self.gstreamer_errorcount_1
 			self.gstreamer_errorcount_1 = 0
 			self.playcount = 0
 			self.waiting_for_playlist = False
 			self.start_new_playlist = False
 			
+			if should_start_new_playlist:
+				self.start_song(start_index)
+			
+		def playlist_errorback(*ignore):
+			self.waiting_for_playlist = False
+
 		self.waiting_for_playlist = True
-		self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...")
+		self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...", context='playlist', errorback=playlist_errorback)
 		  
 	def error_dialog(self, message, retry_cb, submsg=None):
 		dialog = self.builder.get_object("error_dialog")
@@ -841,9 +929,9 @@ if __name__ == "__main__":
 			logging.basicConfig(level=logging.WARNING)
 			
 		logging.info("Pithos %s"%VERSION)
+		enable_dark_theme()
 			
 		window = NewPithosWindow(options)
 		window.show()
 		window.set_icon_from_file('./data/icons/pithos-small.ico')
 		gtk.main()
-
