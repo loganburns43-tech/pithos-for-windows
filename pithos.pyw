@@ -272,7 +272,7 @@ class PithosWindow(gtk.Window):
 		
 		buttonMenu(self.builder.get_object("toolbutton_options"), self.builder.get_object("menu_options"))
 	
-	def worker_run(self, fn, args=(), callback=None, message=None, context='net'):
+	def worker_run(self, fn, args=(), callback=None, message=None, context='net', errorback=None):
 		if context and message:
 			self.statusbar.push(self.statusbar.get_context_id(context), message)
 		
@@ -286,11 +286,13 @@ class PithosWindow(gtk.Window):
 		def eb(e):
 			if context and message:
 				self.statusbar.pop(self.statusbar.get_context_id(context))
+			if errorback:
+				errorback(e)
 				
 			def retry_cb():
 				self.auto_retrying_auth = False
 				if fn is not self.pandora.connect:
-					self.worker_run(fn, args, callback, message, context)
+					self.worker_run(fn, args, callback, message, context, errorback)
 				
 			if isinstance(e, PandoraAuthTokenInvalid) and not self.auto_retrying_auth:
 				self.auto_retrying_auth = True
@@ -476,7 +478,6 @@ class PithosWindow(gtk.Window):
 					proxy = self.preferences['proxy']
 					self.art_worker.send(get_album_art, (i.artRadio, proxy, i, i.index), art_callback)
 
-			self.statusbar.pop(self.statusbar.get_context_id('net'))
 			if self.start_new_playlist:
 				self.start_song(start_index)
 				
@@ -486,8 +487,11 @@ class PithosWindow(gtk.Window):
 			self.waiting_for_playlist = False
 			self.start_new_playlist = False
 			
+		def playlist_errorback(*ignore):
+			self.waiting_for_playlist = False
+
 		self.waiting_for_playlist = True
-		self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...")
+		self.worker_run(self.current_station.get_playlist, (), callback, "Getting songs...", context='playlist', errorback=playlist_errorback)
 		  
 	def error_dialog(self, message, retry_cb, submsg=None):
 		dialog = self.builder.get_object("error_dialog")
@@ -846,4 +850,3 @@ if __name__ == "__main__":
 		window.show()
 		window.set_icon_from_file('./data/icons/pithos-small.ico')
 		gtk.main()
-
