@@ -25,6 +25,8 @@ class MediaKeyPlugin(PithosPlugin):
             self.window.playpause_notify()
         if event.KeyID == 176 or event.Key == 'Media_Next_Track':
             self.window.next_song()
+        if event.KeyID == 177 or event.Key in ('Media_Prev_Track', 'Media_Previous_Track'):
+            self.window.tired_song()
         return True
         
     def on_enable(self):

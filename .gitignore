@@ -1,4 +1,38 @@
-*.pyc
-*.msi
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+
+# Local virtual environments
+.venv/
+venv/
+env/
+
+# Runtime logs and user-specific Pithos data
+*.log
+pithos.log
+pithos.ini
+Pithos/pithos.ini
+Pithos/pithos.log
+AppData/
+%APPDATA%/
+
+# Windows/NSIS generated installers and temporary files
+windows/pithos_installer.exe
 *.exe
-/pithos/pithos.ini
+*.msi
+*.nsi.tmp
+*.tmp
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
