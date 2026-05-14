@@ -31,6 +31,21 @@
               </packing>
             </child>
             <child>
+              <object class="GtkToolButton" id="tiredsong">
+                <property name="visible">True</property>
+                <property name="has_tooltip">True</property>
+                <property name="tooltip_text" translatable="yes">Tired of this song</property>
+                <property name="label" translatable="yes">Tired of Song</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-media-previous</property>
+                <signal name="clicked" handler="on_tired_current_song"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">False</property>
+              </packing>
+            </child>
+            <child>
               <object class="GtkToolButton" id="nextsong">
                 <property name="visible">True</property>
                 <property name="label" translatable="yes">Next Song</property>
@@ -276,11 +291,11 @@
   </object>
   <object class="GtkImage" id="image3">
     <property name="visible">True</property>
-    <property name="stock">gtk-cancel</property>
+    <property name="stock">gtk-media-previous</property>
   </object>
   <object class="GtkImage" id="image4">
     <property name="visible">True</property>
-    <property name="stock">gtk-jump-to</property>
+    <property name="stock">gtk-media-previous</property>
   </object>
   <object class="GtkMessageDialog" id="error_dialog">
     <property name="border_width">5</property>
